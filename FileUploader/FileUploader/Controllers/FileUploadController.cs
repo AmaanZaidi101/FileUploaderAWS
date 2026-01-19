@@ -1,5 +1,8 @@
-﻿using FileUploader.Models;
+﻿using System.Threading.Tasks;
+using FileUploader.Models;
+using FileUploader.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.StaticFiles;
 
 namespace FileUploader.Controllers
@@ -11,17 +14,19 @@ namespace FileUploader.Controllers
 		private readonly string _tempFolder;
 		private readonly int _chunkSize;
 		private readonly int _maxSize;
-		public FileUploadController()
-		{
-			_tempFolder = @"C:\\Users\\Batman\\Downloads\\Tmp\\";
-			_chunkSize = 500 * 1024;
-			_maxSize = 10000 * 1024;
-		}
-		[HttpPost("chunk")]
+        private readonly IHubContext<UploadHub> _hub;
+        public FileUploadController(IHubContext<UploadHub> hub)
+        {
+            _tempFolder = @"C:\\Users\\Batman\\Downloads\\Tmp\\";
+            _chunkSize = 500 * 1024;
+            _maxSize = 10000 * 1024;
+            _hub = hub;
+        }
+        [HttpPost("chunk")]
 		public async Task<IActionResult> UploadChunk([FromForm] FileUploadDTO file)
 		{
 			if (!Directory.Exists(_tempFolder)) { Directory.CreateDirectory(_tempFolder); }
-			var lessonFolder = Path.Combine(_tempFolder, file.LessonId.ToString());
+			var lessonFolder = Path.Combine(_tempFolder, file.LessonId.ToString(), file.FileId.ToString());
 
 			if (file.ChunkIndex == 0 && Directory.Exists(lessonFolder))
 				Directory.Delete(lessonFolder, true);
@@ -37,21 +42,21 @@ namespace FileUploader.Controllers
 		}
 
 		[HttpPost("complete")]
-		public async Task<IActionResult> UploadComplete([FromForm] FileUploadCompleteDTO model)
+		public async Task<IActionResult> UploadComplete([FromForm] FileUploadCompleteDTO dto)
 		{
 			if (!Directory.Exists(_tempFolder)) return StatusCode(500);
 
-			var folderPath = Path.Combine(_tempFolder, model.LessonId.ToString());
+			var folderPath = Path.Combine(_tempFolder, dto.LessonId.ToString(), dto.FileId.ToString());
 			if (!Directory.Exists(folderPath)) return NotFound();
 
 			var chunks = Directory.GetFiles(folderPath);
 			if (chunks.Length == 0)
 				return NotFound();
 
-			var extension = GetExtension(model.FileType);
+			var extension = GetExtension(dto.FileType);
 			if (extension == null) return BadRequest();
 
-			string mergedFilePath = Path.Combine(_tempFolder, model.LessonId.ToString(), $"Merged{extension}");
+			string mergedFilePath = Path.Combine(_tempFolder, dto.LessonId.ToString(), $"Merged{extension}");
 
 			var mergedFile = System.IO.File.Create(mergedFilePath);
 			mergedFile.Dispose();
@@ -70,11 +75,26 @@ namespace FileUploader.Controllers
 				}
 				finally { file.Dispose(); }
 			}
-			Console.WriteLine("Wow");
 			return Ok();
 		}
 
-		private string? GetExtension(string contentType)
+		[HttpPost("progress")]
+        public async Task CommunicateS3Progess([FromBody]Guid fileId)
+        {
+			if (!UploadHub.TryGetConnection(fileId, out var connectionId)) return;
+
+			await _hub.Clients.Client(connectionId).SendAsync("UploadProgress", "Initialising");
+
+			for (int i = 0; i <= 100; i+=10)
+			{
+				await Task.Delay(500);
+				await _hub.Clients.Client(connectionId).SendAsync("UploadProgress", $"{i} %");
+			}
+			await Task.Delay(500);
+			await _hub.Clients.Client(connectionId).SendAsync("UploadComplete", true);
+        }
+
+        private string? GetExtension(string contentType)
 		{
 			var provider = new FileExtensionContentTypeProvider();
 

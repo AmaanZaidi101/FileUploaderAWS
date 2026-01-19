@@ -1,3 +1,5 @@
+using FileUploader.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -10,6 +12,7 @@ builder.Services.AddCors(
 		policy => policy.WithOrigins("http://localhost:5173").AllowAnyMethod().AllowCredentials().AllowAnyHeader()
 		)
 	);
+builder.Services.AddSignalR();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -22,9 +25,10 @@ app.UseSwaggerUI(options =>
 	options.SwaggerEndpoint("/openapi/v1.json", "v1");
 });
 app.UseHttpsRedirection();
+app.UseRouting();
 app.UseCors();
 app.UseAuthorization();
-
 app.MapControllers();
+app.MapHub<UploadHub>("/uploadHub");
 
 app.Run();
