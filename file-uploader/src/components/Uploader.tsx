@@ -1,13 +1,18 @@
 
-import { use, useRef, useState } from "react"
+import { useRef, useState, useEffect } from "react"
 import { Button, Form, Modal } from "react-bootstrap"
 import { FormLabel } from "react-bootstrap"
+import { HubConnection } from "@microsoft/signalr"
+import * as signalr from '@microsoft/signalr'
+
+
 export const Uploader = () => {
     const CHUNK_SIZE: number = 500 * 1024;
     const API_URL = 'https://localhost:7070/api';
     const lessonId = 'db6bfdfd-5778-40e3-8464-6b149e58f0f2';
-    const [validated, setValidated] = useState(false);
+    const [locUploadComplete, setlocUploadComplete] = useState(false);
     const [error, setError] = useState('');
+    const [fileId, setFileId] = useState('');
     const [fileName, setFileName] = useState('');
     const [file, setFile] = useState<File | null>(null);
     const [modalShow, setModalShow] = useState(false);
@@ -16,6 +21,7 @@ export const Uploader = () => {
     const [modalBtnDisabled, setModalBtnDisabled] = useState(true);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const connectionRef = useRef<HubConnection>(null);
 
     const commonVideoTypes = [
         'video/mp4',           // Most common
@@ -37,15 +43,78 @@ export const Uploader = () => {
         if (!(await uploadChunks(chunks)) || !(await uploadComplete(lessonId))) {
             setModalColor('red');
             setModalMessage("Upload Failed!!!");
+            cleanUp();
+        }
+    }
 
-        }
-        else {
+    useEffect(() => {
+        if (!locUploadComplete || !fileId)
+            return;
+
+        const connection = new signalr.HubConnectionBuilder()
+            .withUrl("https://localhost:7070/uploadHub", {
+                withCredentials: true
+            }).withAutomaticReconnect().build();
+
+        connection.on("UploadProgress", (percent) => {
+            setModalColor("black");
+            setModalMessage(`Upload to cloud: ${percent}`);
+        })
+
+        connection.on("UploadComplete", () => {
             setModalColor('green');
+            setModalMessage("Uploaded to cloud");
+            setModalBtnDisabled(false);
+        })
+
+        connection.start()
+            .then(() => connection.invoke("RegisterUpload", fileId)
+                .then(() => setModalMessage('Now uploading to cloud'))
+                .then(() => trackS3Upload())
+                .then(() => { connection.stop(); cleanUp(); })
+                .catch(err => {
+                    console.log(err);
+                    connection.stop();
+                    setModalColor('red');
+                    setModalMessage("Upload Failed!!!");
+                    cleanUp();
+                }));
+
+
+
+        connectionRef.current = connection;
+
+        return () => {
+            connection.stop();
+            connectionRef.current = null;
         }
-        setModalBtnDisabled(false);
-        fileInputRef.current!.value = ''
+    }, [locUploadComplete])
+
+    const cleanUp = () => {
         setFile(null);
         setFileName('');
+        setFileId('');
+        fileInputRef.current!.value = ''
+        setModalBtnDisabled(false);
+
+    }
+
+    const trackS3Upload = async () => {
+        try {
+            const response = await fetch(`${API_URL}/fileupload/progress`, {
+                method: 'POST',
+                body: JSON.stringify(fileId),
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!response.ok) {
+                return false;
+            }
+        } catch (err) {
+            return false;
+        }
+
+        return true;
     }
 
     const uploadChunks = async (chunks: Blob[]) => {
@@ -53,7 +122,7 @@ export const Uploader = () => {
 
             const formData = buildFormData(
                 chunks[i],
-                { lessonId, chunkIndex: i, totalChunks: chunks.length });
+                { lessonId, fileId, chunkIndex: i, totalChunks: chunks.length });
             const res = await uploadChunk(formData);
             if (!res)
                 return res;
@@ -86,6 +155,9 @@ export const Uploader = () => {
     const uploadComplete = async (lessonId: string) => {
         const formData = new FormData();
         formData.append("lessonId", lessonId);
+        formData.append("fileId", fileId);
+        console.log(fileId);
+
         formData.append("fileType", file!.type);
 
         try {
@@ -103,6 +175,7 @@ export const Uploader = () => {
         }
 
         setModalMessage(`File sent to server successfully`);
+        setlocUploadComplete(true);
         return true;
     }
 
@@ -111,6 +184,7 @@ export const Uploader = () => {
 
         const formData = new FormData();
         formData.append("lessonId", meta.lessonId);
+        formData.append("fileId", meta.fileId);
         formData.append("chunkIndex", meta.chunkIndex);
         formData.append("totalChunks", meta.totalChunks);
         formData.append("chunk", chunk, fileName);
@@ -135,6 +209,7 @@ export const Uploader = () => {
         setError('');
         setFileName('');
         setFile(null);
+        setFileId('')
         const selectedFile = e?.target?.files?.[0] ?? null;
         if (selectedFile == null) {
             setError('Could not select file, please try again!');
@@ -146,6 +221,7 @@ export const Uploader = () => {
         }
         setFile(selectedFile);
         setFileName(selectedFile.name);
+        setFileId(crypto.randomUUID());
 
     }
     const onModalHide = () => {
@@ -155,7 +231,7 @@ export const Uploader = () => {
     }
     return (
         <>
-            <Form noValidate validated={validated} onSubmit={handleSubmit}>
+            <Form noValidate onSubmit={handleSubmit}>
                 <Form.Group className="mb-3" controlId="uploader">
                     <FormLabel>Upload the lesson video</FormLabel>
                     <Form.Control
