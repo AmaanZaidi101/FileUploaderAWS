@@ -1,4 +1,9 @@
-using FileUploader.Services;
+using Amazon.S3;
+using FileUploader.Api.Hubs;
+using FileUploader.Application.Interfaces;
+using FileUploader.Application.Services;
+using FileUploader.Infrastructure.AWS;
+using FileUploader.Infrastructure.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +18,11 @@ builder.Services.AddCors(
 		)
 	);
 builder.Services.AddSignalR();
+builder.Services.Configure<AwsOptions>(builder.Configuration.GetSection("Aws"));
+builder.Services.AddSingleton<IS3ClientFactory, S3ClientFactory>();
+builder.Services.AddScoped<IS3Uploader, S3Uploader>();
+builder.Services.AddTransient<IFileUploadService, FileUploadService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

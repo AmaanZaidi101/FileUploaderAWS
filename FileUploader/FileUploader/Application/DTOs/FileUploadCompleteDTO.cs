@@ -1,4 +1,4 @@
-﻿namespace FileUploader.Models
+﻿namespace FileUploader.Application.DTOs
 {
     public class FileUploadCompleteDTO
     {

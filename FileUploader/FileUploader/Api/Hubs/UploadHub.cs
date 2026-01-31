@@ -1,10 +1,11 @@
-﻿using Microsoft.AspNetCore.SignalR;
+﻿using System.Collections.Concurrent;
+using Microsoft.AspNetCore.SignalR;
 
-namespace FileUploader.Services
+namespace FileUploader.Api.Hubs
 {
     public class UploadHub : Hub
     {
-        public static readonly Dictionary<Guid, string> UploadConnections = new Dictionary<Guid, string>();
+        public static readonly ConcurrentDictionary<Guid, string> UploadConnections = new();
         
         public Task RegisterUpload(Guid fileId)
         {
@@ -23,7 +24,7 @@ namespace FileUploader.Services
                                     .Select(x => x.Key).ToList();
             foreach (var deadConnection in deadConnections)
             {
-                UploadConnections.Remove(deadConnection);
+                UploadConnections.TryRemove(deadConnection, out _);
             }
 
             return base.OnDisconnectedAsync(exception);
