@@ -61,17 +61,23 @@ export const Uploader = () => {
             setModalMessage(`Upload to cloud: ${percent}`);
         })
 
-        connection.on("UploadComplete", () => {
-            setModalColor('green');
-            setModalMessage("Uploaded to cloud");
+        connection.on("UploadComplete", (value) => {
+            if (value) {
+                setModalColor('green');
+                setModalMessage("Uploaded to cloud");
+            }
+            else {
+                setModalColor('red');
+                setModalMessage("Cloud upload failed");
+            }
             setModalBtnDisabled(false);
+            connection.stop();
+            cleanUp();
         })
 
         connection.start()
             .then(() => connection.invoke("RegisterUpload", fileId)
                 .then(() => setModalMessage('Now uploading to cloud'))
-                .then(() => trackS3Upload())
-                .then(() => { connection.stop(); cleanUp(); })
                 .catch(err => {
                     console.log(err);
                     connection.stop();
@@ -97,24 +103,6 @@ export const Uploader = () => {
         fileInputRef.current!.value = ''
         setModalBtnDisabled(false);
 
-    }
-
-    const trackS3Upload = async () => {
-        try {
-            const response = await fetch(`${API_URL}/fileupload/progress`, {
-                method: 'POST',
-                body: JSON.stringify(fileId),
-                headers: { 'Content-Type': 'application/json' }
-            });
-
-            if (!response.ok) {
-                return false;
-            }
-        } catch (err) {
-            return false;
-        }
-
-        return true;
     }
 
     const uploadChunks = async (chunks: Blob[]) => {
