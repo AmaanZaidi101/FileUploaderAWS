@@ -1,44 +1,81 @@
-using Amazon.S3;
-using FileUploader.Api.Hubs;
-using FileUploader.Application.Interfaces;
-using FileUploader.Application.Services;
-using FileUploader.Infrastructure.AWS;
-using FileUploader.Infrastructure.Options;
+﻿using FileUploader.Application.Context;
+using FileUploader.Application.Models;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-
+// ---------------- Controllers ----------------
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
-builder.Services.AddCors(
-	options => options.AddDefaultPolicy(
-		policy => policy.WithOrigins("http://localhost:5173").AllowAnyMethod().AllowCredentials().AllowAnyHeader()
-		)
-	);
-builder.Services.AddSignalR();
-builder.Services.Configure<AwsOptions>(builder.Configuration.GetSection("Aws"));
-builder.Services.AddSingleton<IS3ClientFactory, S3ClientFactory>();
-builder.Services.AddScoped<IS3Uploader, S3Uploader>();
-builder.Services.AddTransient<IFileUploadService, FileUploadService>();
+
+// ---------------- Database ----------------
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+	options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
+);
+
+// ---------------- Identity (DO NOT ADD COOKIES MANUALLY) ----------------
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+{
+	options.User.RequireUniqueEmail = true;
+	options.SignIn.RequireConfirmedAccount = false;
+})
+.AddEntityFrameworkStores<ApplicationDbContext>()
+.AddDefaultTokenProviders();
+
+// ---------------- Google Authentication ----------------
+builder.Services.AddAuthentication()
+	.AddGoogle("Google", options =>
+	{
+		options.ClientId =
+			builder.Configuration["Authentication:Google:ClientId"]
+			?? Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")
+			?? throw new InvalidOperationException("Google ClientId missing");
+
+		options.ClientSecret =
+			builder.Configuration["Authentication:Google:ClientSecret"]
+			?? Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET")
+			?? throw new InvalidOperationException("Google ClientSecret missing");
+
+		// MUST match controller callback
+		options.CallbackPath = "/signin-google";
+
+		// Identity external cookie
+		options.SignInScheme = IdentityConstants.ExternalScheme;
+
+		options.Scope.Add("email");
+		options.Scope.Add("profile");
+
+		options.SaveTokens = true;
+	});
+
+// ---------------- Cookie Settings (LOCALHOST SAFE) ----------------
+builder.Services.ConfigureApplicationCookie(options =>
+{
+	options.Cookie.HttpOnly = true;
+	options.Cookie.SameSite = SameSiteMode.Lax;
+	options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+	options.LoginPath = "/api/auth/google-login";
+});
+
+// ---------------- CORS ----------------
+builder.Services.AddCors(options =>
+{
+	options.AddDefaultPolicy(policy =>
+		policy.WithOrigins("https://localhost:5174").WithOrigins("https://localhost:5173")
+			  .AllowAnyHeader()
+			  .AllowAnyMethod()
+			  .AllowCredentials());
+});
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
-app.UseSwaggerUI(options =>
-{
-	options.SwaggerEndpoint("/openapi/v1.json", "v1");
-});
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseCors();
+
+app.UseAuthentication();
 app.UseAuthorization();
+
 app.MapControllers();
-app.MapHub<UploadHub>("/uploadHub");
 
 app.Run();
