@@ -1,5 +1,10 @@
-﻿using FileUploader.Application.Context;
+﻿using FileUploader.Api.Hubs;
+using FileUploader.Application.Context;
+using FileUploader.Application.Interfaces;
 using FileUploader.Application.Models;
+using FileUploader.Application.Services;
+using FileUploader.Infrastructure.AWS;
+using FileUploader.Infrastructure.Options;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -67,6 +72,12 @@ builder.Services.AddCors(options =>
 			  .AllowCredentials());
 });
 
+builder.Services.AddSignalR();
+builder.Services.Configure<AwsOptions>(builder.Configuration.GetSection("Aws"));
+builder.Services.AddSingleton<IS3ClientFactory, S3ClientFactory>();
+builder.Services.AddScoped<IS3Uploader, S3Uploader>();
+builder.Services.AddTransient<IFileUploadService, FileUploadService>();
+
 var app = builder.Build();
 
 app.UseHttpsRedirection();
@@ -77,5 +88,5 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-
+app.MapHub<UploadHub>("/uploadHub");
 app.Run();

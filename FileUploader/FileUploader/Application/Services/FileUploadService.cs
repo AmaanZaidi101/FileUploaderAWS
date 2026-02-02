@@ -1,8 +1,10 @@
 ﻿using FileUploader.Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.StaticFiles;
 
 namespace FileUploader.Application.Services
 {
+	[Authorize]
     public class FileUploadService : IFileUploadService
     {
 		private readonly string _tempFolder;
