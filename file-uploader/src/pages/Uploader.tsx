@@ -23,13 +23,13 @@ export const Uploader = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const connectionRef = useRef<HubConnection>(null);
 
-    const commonVideoTypes = [
-        'video/mp4',           // Most common
-        'video/webm',          // Web optimized
-        'video/ogg',           // Open source
-        'video/quicktime',     // Apple MOV
-        'video/x-msvideo',     // AVI
-    ];
+    // const commonVideoTypes = [
+    //     'video/mp4',           // Most common
+    //     'video/webm',          // Web optimized
+    //     'video/ogg',           // Open source
+    //     'video/quicktime',     // Apple MOV
+    //     'video/x-msvideo',     // AVI
+    // ];
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -72,6 +72,7 @@ export const Uploader = () => {
             }
             setModalBtnDisabled(false);
             connection.stop();
+            setFileId('');
             cleanUp();
         })
 
@@ -91,7 +92,6 @@ export const Uploader = () => {
         connectionRef.current = connection;
 
         return () => {
-            connection.stop();
             connectionRef.current = null;
         }
     }, [locUploadComplete])
@@ -99,7 +99,6 @@ export const Uploader = () => {
     const cleanUp = () => {
         setFile(null);
         setFileName('');
-        setFileId('');
         fileInputRef.current!.value = ''
         setModalBtnDisabled(false);
 
@@ -141,6 +140,7 @@ export const Uploader = () => {
     }
 
     const uploadComplete = async (lessonId: string) => {
+        setlocUploadComplete(false);
         const formData = new FormData();
         formData.append("lessonId", lessonId);
         formData.append("fileId", fileId);
@@ -203,10 +203,10 @@ export const Uploader = () => {
             setError('Could not select file, please try again!');
             return;
         }
-        if (!commonVideoTypes.includes(selectedFile?.type)) {
-            setError('Invalid file type!!');
-            return;
-        }
+        // if (!commonVideoTypes.includes(selectedFile?.type)) {
+        //     setError('Invalid file type!!');
+        //     return;
+        // }
         setFile(selectedFile);
         setFileName(selectedFile.name);
         setFileId(crypto.randomUUID());
