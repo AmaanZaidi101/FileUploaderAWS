@@ -584,3 +584,5 @@ $RECYCLE.BIN/
 *.zip
 *.tar.gz
 *.rar
+
+*.pem
